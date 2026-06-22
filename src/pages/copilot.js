@@ -306,7 +306,7 @@ export function render(container) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 
-  function handleSendMessage(text) {
+  async function handleSendMessage(text) {
     if (!text.trim()) return;
 
     appendUserMessage(text);
@@ -319,17 +319,32 @@ export function render(container) {
     // Show thinking indicator
     appendTypingIndicator();
 
-    setTimeout(() => {
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text })
+      });
+      const data = await res.json();
+      
+      removeTypingIndicator();
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      appendAssistantResponse(data);
+    } catch (err) {
+      console.error('Error fetching chat response:', err);
       removeTypingIndicator();
       
+      // Fallback local match
       const response = findResponse(text);
       appendAssistantResponse(response);
-
+    } finally {
       // Re-enable inputs
       chatInput.disabled = false;
       sendBtn.disabled = false;
       chatInput.focus();
-    }, 1200);
+    }
   }
 
   // Bind input area event handlers

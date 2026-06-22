@@ -3,13 +3,9 @@
 // ========================================
 
 import * as d3 from 'd3';
-import { graphNodes, graphEdges, nodeTypeConfig } from '../data/knowledge-graph.js';
+import { graphNodes, graphEdges, nodeTypeConfig as staticNodeTypeConfig } from '../data/knowledge-graph.js';
 
 export function render(container) {
-  // We need to clone the nodes and links because D3 mutates them
-  const nodes = graphNodes.map(n => ({ ...n }));
-  const links = graphEdges.map(e => ({ ...e }));
-
   container.innerHTML = `
     <div class="page kg-page">
       <!-- Page Header -->
@@ -42,16 +38,17 @@ export function render(container) {
           </div>
 
           <!-- D3 Target SVG -->
-          <svg id="kg-svg"></svg>
+          <svg id="kg-svg">
+            <g id="loading-text">
+              <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="var(--text-muted)" font-family="var(--font-sans)">
+                Loading Live Entity Graph...
+              </text>
+            </g>
+          </svg>
 
           <!-- Legend -->
-          <div class="kg-legend">
-            ${Object.entries(nodeTypeConfig).map(([type, cfg]) => `
-              <div class="legend-item" data-type="${type}">
-                <span class="legend-dot" style="background-color: ${cfg.color}"></span>
-                <span class="legend-label">${cfg.label}</span>
-              </div>
-            `).join('')}
+          <div class="kg-legend" id="kg-legend-container">
+            <!-- Populated dynamically -->
           </div>
         </div>
 
@@ -71,11 +68,11 @@ export function render(container) {
           <div class="glass-card stats-panel">
             <div class="kg-stats-grid">
               <div class="kg-stat">
-                <div class="kg-stat-value">${nodes.length}</div>
+                <div class="kg-stat-value" id="stats-nodes-count">-</div>
                 <div class="kg-stat-label">Nodes</div>
               </div>
               <div class="kg-stat">
-                <div class="kg-stat-value">${links.length}</div>
+                <div class="kg-stat-value" id="stats-edges-count">-</div>
                 <div class="kg-stat-label">Edges</div>
               </div>
               <div class="kg-stat">
@@ -106,263 +103,296 @@ export function render(container) {
     </div>
   `;
 
-  // D3 force simulation setup
-  const svg = d3.select('#kg-svg');
-  const containerElement = document.querySelector('.kg-graph-container');
-  
-  // Set dimensions dynamically based on container size
-  const width = containerElement.clientWidth;
-  const height = containerElement.clientHeight || 550;
-  svg.attr('viewBox', `0 0 ${width} ${height}`);
+  // Fetch dynamic graph nodes/links from the backend
+  fetch('/api/graph')
+    .then(res => res.json())
+    .then(data => {
+      // Remove loading indicator
+      d3.select('#loading-text').remove();
+      
+      // Update Stats
+      container.querySelector('#stats-nodes-count').textContent = data.nodes.length;
+      container.querySelector('#stats-edges-count').textContent = data.links.length;
 
-  // Create a main group for zoom behavior
-  const g = svg.append('g');
+      // Populate Legend
+      const legendContainer = container.querySelector('#kg-legend-container');
+      legendContainer.innerHTML = Object.entries(data.nodeTypeConfig).map(([type, cfg]) => `
+        <div class="legend-item" data-type="${type}">
+          <span class="legend-dot" style="background-color: ${cfg.color}"></span>
+          <span class="legend-label">${type.charAt(0).toUpperCase() + type.slice(1)}</span>
+        </div>
+      `).join('');
 
-  // Zoom behavior
-  const zoom = d3.zoom()
-    .scaleExtent([0.1, 8])
-    .on('zoom', (event) => {
-      g.attr('transform', event.transform);
+      buildD3Graph(data.nodes, data.links, data.nodeTypeConfig);
+    })
+    .catch(err => {
+      console.warn('Backend graph offline. Rendering static fallback graph.', err);
+      d3.select('#loading-text').remove();
+      
+      container.querySelector('#stats-nodes-count').textContent = graphNodes.length;
+      container.querySelector('#stats-edges-count').textContent = graphEdges.length;
+
+      const legendContainer = container.querySelector('#kg-legend-container');
+      legendContainer.innerHTML = Object.entries(staticNodeTypeConfig).map(([type, cfg]) => `
+        <div class="legend-item" data-type="${type}">
+          <span class="legend-dot" style="background-color: ${cfg.color}"></span>
+          <span class="legend-label">${cfg.label}</span>
+        </div>
+      `).join('');
+
+      // Fallback clone
+      const fallbackNodes = graphNodes.map(n => ({ ...n }));
+      const fallbackLinks = graphEdges.map(e => ({ ...e }));
+      buildD3Graph(fallbackNodes, fallbackLinks, staticNodeTypeConfig);
     });
 
-  svg.call(zoom);
+  // Graph builder function
+  function buildD3Graph(nodes, links, nodeTypeConfig) {
+    const svg = d3.select('#kg-svg');
+    const containerElement = document.querySelector('.kg-graph-container');
+    const width = containerElement.clientWidth;
+    const height = containerElement.clientHeight || 550;
+    svg.attr('viewBox', `0 0 ${width} ${height}`);
 
-  // Simulation Setup
-  const simulation = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(links).id(d => d.id).distance(90))
-    .force('charge', d3.forceManyBody().strength(-180))
-    .force('center', d3.forceCenter(width / 2, height / 2))
-    .force('collide', d3.forceCollide(25));
+    const g = svg.append('g');
 
-  // Render edges (links)
-  const link = g.append('g')
-    .attr('class', 'links')
-    .selectAll('line')
-    .data(links)
-    .enter().append('line')
-    .attr('class', 'link')
-    .attr('stroke', '#334155')
-    .attr('stroke-width', 1.5)
-    .attr('stroke-opacity', 0.4);
+    // Zoom setup
+    const zoom = d3.zoom()
+      .scaleExtent([0.1, 8])
+      .on('zoom', (event) => {
+        g.attr('transform', event.transform);
+      });
 
-  // Render nodes
-  const node = g.append('g')
-    .attr('class', 'nodes')
-    .selectAll('.node')
-    .data(nodes)
-    .enter().append('g')
-    .attr('class', 'node')
-    .call(d3.drag()
-      .on('start', dragstarted)
-      .on('drag', dragged)
-      .on('end', dragended))
-    .on('click', handleNodeClick)
-    .on('mouseover', handleMouseOver)
-    .on('mouseout', handleMouseOut);
+    svg.call(zoom);
 
-  // Draw node circles
-  node.append('circle')
-    .attr('r', d => nodeTypeConfig[d.type]?.radius || 10)
-    .attr('fill', d => nodeTypeConfig[d.type]?.color || '#94A3B8')
-    .attr('stroke', 'rgba(255, 255, 255, 0.15)')
-    .attr('stroke-width', 1.5);
+    // Force simulation
+    const simulation = d3.forceSimulation(nodes)
+      .force('link', d3.forceLink(links).id(d => d.id).distance(80))
+      .force('charge', d3.forceManyBody().strength(-180))
+      .force('center', d3.forceCenter(width / 2, height / 2))
+      .force('collide', d3.forceCollide(25));
 
-  // Node labels
-  node.append('text')
-    .attr('dy', d => (nodeTypeConfig[d.type]?.radius || 10) + 12)
-    .attr('text-anchor', 'middle')
-    .text(d => d.label)
-    .attr('fill', 'var(--text-secondary)')
-    .style('font-size', '10px');
+    // Links
+    const link = g.append('g')
+      .attr('class', 'links')
+      .selectAll('line')
+      .data(links)
+      .enter().append('line')
+      .attr('class', 'link')
+      .attr('stroke', '#334155')
+      .attr('stroke-width', 1.5)
+      .attr('stroke-opacity', 0.4);
 
-  // Update simulation ticks
-  simulation.on('tick', () => {
-    link
-      .attr('x1', d => d.source.x)
-      .attr('y1', d => d.source.y)
-      .attr('x2', d => d.target.x)
-      .attr('y2', d => d.target.y);
+    // Nodes
+    const node = g.append('g')
+      .attr('class', 'nodes')
+      .selectAll('.node')
+      .data(nodes)
+      .enter().append('g')
+      .attr('class', 'node')
+      .call(d3.drag()
+        .on('start', dragstarted)
+        .on('drag', dragged)
+        .on('end', dragended))
+      .on('click', handleNodeClick)
+      .on('mouseover', handleMouseOver)
+      .on('mouseout', handleMouseOut);
 
-    node
-      .attr('transform', d => `translate(${d.x},${d.y})`);
-  });
+    // Circles
+    node.append('circle')
+      .attr('r', d => nodeTypeConfig[d.type]?.radius || 10)
+      .attr('fill', d => nodeTypeConfig[d.type]?.color || '#94A3B8')
+      .attr('stroke', 'rgba(255, 255, 255, 0.15)')
+      .attr('stroke-width', 1.5);
 
-  // Drag Handlers
-  function dragstarted(event, d) {
-    if (!event.active) simulation.alphaTarget(0.3).restart();
-    d.fx = d.x;
-    d.fy = d.y;
-  }
+    // Labels
+    node.append('text')
+      .attr('dy', d => (nodeTypeConfig[d.type]?.radius || 10) + 12)
+      .attr('text-anchor', 'middle')
+      .text(d => d.label)
+      .attr('fill', 'var(--text-secondary)')
+      .style('font-size', '10px');
 
-  function dragged(event, d) {
-    d.fx = event.x;
-    d.fy = event.y;
-  }
+    simulation.on('tick', () => {
+      link
+        .attr('x1', d => d.source.x)
+        .attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x)
+        .attr('y2', d => d.target.y);
 
-  function dragended(event, d) {
-    if (!event.active) simulation.alphaTarget(0);
-    d.fx = null;
-    d.fy = null;
-  }
-
-  // Zoom control click listeners
-  container.querySelector('#zoom-in').addEventListener('click', () => {
-    svg.transition().duration(250).call(zoom.scaleBy, 1.3);
-  });
-
-  container.querySelector('#zoom-out').addEventListener('click', () => {
-    svg.transition().duration(250).call(zoom.scaleBy, 0.7);
-  });
-
-  container.querySelector('#zoom-reset').addEventListener('click', () => {
-    svg.transition().duration(250).call(zoom.transform, d3.zoomIdentity);
-  });
-
-  // Hover highlighting
-  function handleMouseOver(event, d) {
-    // Highlight hovered node connections
-    const connectedNodeIds = new Set();
-    connectedNodeIds.add(d.id);
-
-    link.attr('stroke-opacity', l => {
-      if (l.source.id === d.id || l.target.id === d.id) {
-        connectedNodeIds.add(l.source.id);
-        connectedNodeIds.add(l.target.id);
-        return 0.9;
-      }
-      return 0.1;
-    }).attr('stroke-width', l => (l.source.id === d.id || l.target.id === d.id) ? 2.5 : 1);
-
-    node.attr('opacity', n => connectedNodeIds.has(n.id) ? 1 : 0.25);
-  }
-
-  function handleMouseOut() {
-    // Reset opacities
-    link.attr('stroke-opacity', 0.4).attr('stroke-width', 1.5);
-    node.attr('opacity', 1);
-  }
-
-  // Click Details Panel update
-  function handleNodeClick(event, d) {
-    const detailPanel = container.querySelector('#kg-node-detail');
-    const color = nodeTypeConfig[d.type]?.color || '#94A3B8';
-    
-    // Find all connected nodes/edges
-    const connections = links.filter(l => l.source.id === d.id || l.target.id === d.id).map(l => {
-      const isSource = l.source.id === d.id;
-      const targetNode = isSource ? l.target : l.source;
-      return {
-        id: targetNode.id,
-        label: targetNode.label,
-        type: targetNode.type,
-        color: nodeTypeConfig[targetNode.type]?.color,
-        relType: l.type,
-        relLabel: l.label
-      };
+      node
+        .attr('transform', d => `translate(${d.x},${d.y})`);
     });
 
-    let propsHtml = '';
-    const ignoreProps = ['id', 'x', 'y', 'vx', 'vy', 'fx', 'fy', 'index', 'type', 'label'];
-    Object.entries(d).forEach(([key, value]) => {
-      if (!ignoreProps.includes(key) && value) {
-        // Format properties beautifully
-        const label = key.charAt(0).toUpperCase() + key.slice(1);
-        propsHtml += `
-          <div class="kg-node-prop">
-            <span class="prop-key">${label}:</span>
-            <span class="prop-val">${value}</span>
-          </div>
-        `;
-      }
+    // Drag behavior
+    function dragstarted(event, d) {
+      if (!event.active) simulation.alphaTarget(0.3).restart();
+      d.fx = d.x;
+      d.fy = d.y;
+    }
+
+    function dragged(event, d) {
+      d.fx = event.x;
+      d.fy = event.y;
+    }
+
+    function dragended(event, d) {
+      if (!event.active) simulation.alphaTarget(0);
+      d.fx = null;
+      d.fy = null;
+    }
+
+    // Zoom controls
+    container.querySelector('#zoom-in').addEventListener('click', () => {
+      svg.transition().duration(250).call(zoom.scaleBy, 1.3);
     });
 
-    detailPanel.innerHTML = `
-      <div class="kg-detail-view animate-fade-in-up">
-        <div class="kg-detail-header">
-          <span class="kg-node-type" style="background-color: ${color}20; color: ${color}; border: 1px solid ${color}40;">
-            ${d.type.toUpperCase()}
-          </span>
-          <h2 class="kg-node-name">${d.label}</h2>
-        </div>
+    container.querySelector('#zoom-out').addEventListener('click', () => {
+      svg.transition().duration(250).call(zoom.scaleBy, 0.7);
+    });
 
-        <div class="kg-node-props">
-          ${propsHtml || '<p class="text-muted">No additional properties listed</p>'}
-        </div>
+    container.querySelector('#zoom-reset').addEventListener('click', () => {
+      svg.transition().duration(250).call(zoom.transform, d3.zoomIdentity);
+    });
 
-        <div class="kg-connections-section">
-          <h4>Relationships (${connections.length})</h4>
-          <div class="kg-connections">
-            ${connections.map(conn => `
-              <div class="kg-connection-item" data-id="${conn.id}">
-                <span class="kg-connection-dot" style="background-color: ${conn.color}"></span>
-                <div class="kg-connection-info">
-                  <span class="conn-node">${conn.label}</span>
-                  <span class="conn-rel-label">${conn.relLabel}</span>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      </div>
-    `;
+    // Hover highlighting
+    function handleMouseOver(event, d) {
+      const connectedNodeIds = new Set();
+      connectedNodeIds.add(d.id);
 
-    // Add click listeners to related nodes in the sidebar
-    detailPanel.querySelectorAll('.kg-connection-item').forEach(item => {
-      item.addEventListener('click', () => {
-        const targetId = item.getAttribute('data-id');
-        const targetNode = nodes.find(n => n.id === targetId);
-        if (targetNode) {
-          // Trigger click programmatically and center graph on node
-          handleNodeClick(null, targetNode);
-          
-          // Animate view transition to target node
-          const transform = d3.zoomIdentity
-            .translate(width / 2 - targetNode.x, height / 2 - targetNode.y)
-            .scale(1.2);
-          svg.transition().duration(500).call(zoom.transform, transform);
+      link.attr('stroke-opacity', l => {
+        if (l.source.id === d.id || l.target.id === d.id) {
+          connectedNodeIds.add(l.source.id);
+          connectedNodeIds.add(l.target.id);
+          return 0.9;
         }
+        return 0.1;
+      }).attr('stroke-width', l => (l.source.id === d.id || l.target.id === d.id) ? 2.5 : 1);
+
+      node.attr('opacity', n => connectedNodeIds.has(n.id) ? 1 : 0.25);
+    }
+
+    function handleMouseOut() {
+      link.attr('stroke-opacity', 0.4).attr('stroke-width', 1.5);
+      node.attr('opacity', 1);
+    }
+
+    // Node click handler
+    function handleNodeClick(event, d) {
+      const detailPanel = container.querySelector('#kg-node-detail');
+      const color = nodeTypeConfig[d.type]?.color || '#94A3B8';
+      
+      const connections = links.filter(l => l.source.id === d.id || l.target.id === d.id).map(l => {
+        const isSource = l.source.id === d.id;
+        const targetNode = isSource ? l.target : l.source;
+        return {
+          id: targetNode.id,
+          label: targetNode.label,
+          type: targetNode.type,
+          color: nodeTypeConfig[targetNode.type]?.color,
+          relType: l.type,
+          relLabel: l.label
+        };
+      });
+
+      let propsHtml = '';
+      const ignoreProps = ['id', 'x', 'y', 'vx', 'vy', 'fx', 'fy', 'index', 'type', 'label'];
+      Object.entries(d).forEach(([key, value]) => {
+        if (!ignoreProps.includes(key) && value) {
+          const label = key.charAt(0).toUpperCase() + key.slice(1);
+          propsHtml += `
+            <div class="kg-node-prop">
+              <span class="prop-key">${label}:</span>
+              <span class="prop-val">${value}</span>
+            </div>
+          `;
+        }
+      });
+
+      detailPanel.innerHTML = `
+        <div class="kg-detail-view animate-fade-in-up">
+          <div class="kg-detail-header">
+            <span class="kg-node-type" style="background-color: ${color}20; color: ${color}; border: 1px solid ${color}40;">
+              ${d.type.toUpperCase()}
+            </span>
+            <h2 class="kg-node-name">${d.label}</h2>
+          </div>
+
+          <div class="kg-node-props">
+            ${propsHtml || '<p class="text-muted">No additional properties listed</p>'}
+          </div>
+
+          <div class="kg-connections-section">
+            <h4>Relationships (${connections.length})</h4>
+            <div class="kg-connections">
+              ${connections.map(conn => `
+                <div class="kg-connection-item" data-id="${conn.id}">
+                  <span class="kg-connection-dot" style="background-color: ${conn.color}"></span>
+                  <div class="kg-connection-info">
+                    <span class="conn-node">${conn.label}</span>
+                    <span class="conn-rel-label">${conn.relLabel}</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Sidebar connection navigation
+      detailPanel.querySelectorAll('.kg-connection-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const targetId = item.getAttribute('data-id');
+          const targetNode = nodes.find(n => n.id === targetId);
+          if (targetNode) {
+            handleNodeClick(null, targetNode);
+            const transform = d3.zoomIdentity
+              .translate(width / 2 - targetNode.x, height / 2 - targetNode.y)
+              .scale(1.2);
+            svg.transition().duration(500).call(zoom.transform, transform);
+          }
+        });
+      });
+    }
+
+    // Legend filters
+    let activeFilters = new Set(Object.keys(nodeTypeConfig));
+    container.querySelectorAll('.legend-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const type = item.getAttribute('data-type');
+        if (activeFilters.has(type)) {
+          activeFilters.delete(type);
+          item.classList.add('inactive');
+        } else {
+          activeFilters.add(type);
+          item.classList.remove('inactive');
+        }
+
+        node.style('display', n => activeFilters.has(n.type) ? 'block' : 'none');
+        link.style('display', l => (activeFilters.has(l.source.type) && activeFilters.has(l.target.type)) ? 'block' : 'none');
+      });
+    });
+
+    // Search filter
+    const searchInput = container.querySelector('#kg-search');
+    searchInput.addEventListener('input', (e) => {
+      const query = e.target.value.toLowerCase().trim();
+      if (!query) {
+        node.attr('opacity', 1);
+        link.attr('stroke-opacity', 0.4);
+        return;
+      }
+
+      node.attr('opacity', n => {
+        const match = n.label.toLowerCase().includes(query) || n.type.toLowerCase().includes(query) || (n.subtype && n.subtype.toLowerCase().includes(query));
+        return match ? 1 : 0.15;
+      });
+
+      link.attr('stroke-opacity', l => {
+        const matchSource = l.source.label.toLowerCase().includes(query) || l.source.type.toLowerCase().includes(query);
+        const matchTarget = l.target.label.toLowerCase().includes(query) || l.target.type.toLowerCase().includes(query);
+        return (matchSource && matchTarget) ? 0.4 : 0.05;
       });
     });
   }
-
-  // Legend filtering
-  let activeFilters = new Set(Object.keys(nodeTypeConfig));
-  container.querySelectorAll('.legend-item').forEach(item => {
-    item.addEventListener('click', () => {
-      const type = item.getAttribute('data-type');
-      if (activeFilters.has(type)) {
-        activeFilters.delete(type);
-        item.classList.add('inactive');
-      } else {
-        activeFilters.add(type);
-        item.classList.remove('inactive');
-      }
-
-      // Filter nodes based on active filters
-      node.style('display', n => activeFilters.has(n.type) ? 'block' : 'none');
-      link.style('display', l => (activeFilters.has(l.source.type) && activeFilters.has(l.target.type)) ? 'block' : 'none');
-    });
-  });
-
-  // Search input handler
-  const searchInput = container.querySelector('#kg-search');
-  searchInput.addEventListener('input', (e) => {
-    const query = e.target.value.toLowerCase().trim();
-    if (!query) {
-      node.attr('opacity', 1);
-      link.attr('stroke-opacity', 0.4);
-      return;
-    }
-
-    node.attr('opacity', n => {
-      const match = n.label.toLowerCase().includes(query) || n.type.toLowerCase().includes(query) || (n.subtype && n.subtype.toLowerCase().includes(query));
-      return match ? 1 : 0.15;
-    });
-
-    link.attr('stroke-opacity', l => {
-      const matchSource = l.source.label.toLowerCase().includes(query) || l.source.type.toLowerCase().includes(query);
-      const matchTarget = l.target.label.toLowerCase().includes(query) || l.target.type.toLowerCase().includes(query);
-      return (matchSource && matchTarget) ? 0.4 : 0.05;
-    });
-  });
 }
