@@ -19,7 +19,7 @@ IKIP is a Single-Page Application (SPA) designed to unify fragmented industrial 
 ## Project Structure
 
 ```
-lively-darwin/
+ikip/
 ├── documents-raw/
 │   └── sample-oisd-excerpt.md   # Raw industrial safety guidelines (RAG source)
 ├── src/
@@ -61,7 +61,7 @@ GEMINI_API_KEY=your_actual_gemini_api_key_here
 
 You need to run both the backend server and frontend development server:
 
-#### Start the Backend API (Port 3000):
+#### Start the Backend API (Port 3001):
 ```bash
 node server.js
 ```

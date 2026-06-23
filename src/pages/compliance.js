@@ -159,7 +159,7 @@ export function render(container) {
                     </div>
                     <div class="gap-desc">${gap.description}</div>
                     <div class="gap-meta">
-                      <span>Ref: <strong>${gap.ref}</strong></span> • 
+                      <span>Ref: <strong>${gap.requirement}</strong></span> • 
                       <span>Due: <strong>${gap.dueDate}</strong></span> • 
                       <span>Responsible: <strong>${gap.owner}</strong></span>
                     </div>

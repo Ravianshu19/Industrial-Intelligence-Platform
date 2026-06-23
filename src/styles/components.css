@@ -604,3 +604,40 @@
   width: 20px;
   height: 20px;
 }
+
+/* ---- Mobile Touch Target Optimizations (iOS / Android standards) ---- */
+@media (max-width: 768px) {
+  .btn,
+  .copilot-send-btn,
+  .topbar-btn {
+    min-height: 44px;
+    min-width: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .btn:not(.btn-sm):not(.btn-icon) {
+    padding: var(--space-3) var(--space-6);
+  }
+
+  .btn-sm {
+    min-height: 44px;
+    padding: var(--space-2) var(--space-4);
+  }
+
+  .chip,
+  .tab {
+    min-height: 44px;
+    padding: var(--space-2) var(--space-5);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .input-field,
+  .search-input {
+    min-height: 44px;
+  }
+}
+

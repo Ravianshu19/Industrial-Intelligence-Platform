@@ -250,7 +250,8 @@ export function render(container) {
   function simulateIngestion(files) {
     if (files.length === 0) return;
     
-    const fileName = files[0].name;
+    const file = files[0];
+    const fileName = file.name;
     
     // Change upload zone text to processing
     const originalHtml = uploadZone.innerHTML;
@@ -278,6 +279,40 @@ export function render(container) {
       step.querySelector('.pipeline-status-badge').textContent = 'Pending';
     });
 
+    // Read the file as text and upload to server
+    let uploadSuccess = false;
+    let uploadError = null;
+    const reader = new FileReader();
+    
+    reader.onload = async (event) => {
+      try {
+        const content = event.target.result;
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ name: fileName, content })
+        });
+        
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `Server returned ${res.status}`);
+        }
+        
+        uploadSuccess = true;
+      } catch (err) {
+        console.error('Error during upload:', err);
+        uploadError = err.message;
+      }
+    };
+
+    reader.onerror = () => {
+      uploadError = 'File reading error';
+    };
+
+    reader.readAsText(file);
+
     let currentStep = 0;
     const interval = setInterval(() => {
       if (currentStep > 0) {
@@ -294,36 +329,42 @@ export function render(container) {
         
         // Finalize ingestion simulation
         uploadZone.innerHTML = originalHtml;
-        alert(`Successfully ingested "${fileName}"! Placed into Refinery Database and mapped to the Knowledge Graph.`);
         
-        // Add a mock document to the documents list array dynamically and redraw list
-        const fileExt = fileName.split('.').pop() || 'pdf';
-        documents.unshift({
-          id: `DOC-NEW-${Math.floor(Math.random() * 1000)}`,
-          name: fileName.replace(/\.[^/.]+$/, ""),
-          type: 'pid',
-          format: fileExt.toLowerCase(),
-          category: 'Uploaded Document',
-          plant: 'IOCL Gujarat Refinery',
-          unit: 'CDU-1',
-          uploadDate: new Date().toISOString().split('T')[0],
-          size: '2.4 MB',
-          status: 'processed',
-          entities: {
-            equipment: ['E-101', 'CDU-1'],
-            parameters: ['250°C'],
-            regulations: ['OISD-STD-118'],
-            personnel: ['Self']
-          },
-          confidence: 97
-        });
-        updateDocList();
+        if (uploadError) {
+          alert(`Error ingesting "${fileName}": ${uploadError}`);
+        } else {
+          alert(`Successfully ingested "${fileName}"! Placed into Refinery Database and mapped to the Knowledge Graph.`);
+          
+          // Add a mock document to the documents list array dynamically and redraw list
+          const fileExt = fileName.split('.').pop() || 'pdf';
+          documents.unshift({
+            id: `DOC-NEW-${Math.floor(Math.random() * 1000)}`,
+            name: fileName.replace(/\.[^/.]+$/, ""),
+            type: 'pid',
+            format: fileExt.toLowerCase(),
+            category: 'Uploaded Document',
+            plant: 'IOCL Gujarat Refinery',
+            unit: 'CDU-1',
+            uploadDate: new Date().toISOString().split('T')[0],
+            size: '2.4 MB',
+            status: 'processed',
+            entities: {
+              equipment: ['E-101', 'CDU-1'],
+              parameters: ['250°C'],
+              regulations: ['OISD-STD-118'],
+              personnel: ['Self']
+            },
+            confidence: 97
+          });
+          updateDocList();
+        }
         
         // reset upload handlers
         simulateIngestionReset();
       }
     }, 1000);
   }
+
 
   function simulateIngestionReset() {
     // Re-attach upload handlers since innerHTML cleared them

@@ -340,6 +340,21 @@
   .topbar-search {
     display: none;
   }
+
+  .nav-item {
+    min-height: 44px;
+    padding: var(--space-3) var(--space-4);
+  }
+
+  /* Spacing adjustments & padding optimizations for mobile layout containers */
+  #content {
+    padding: var(--space-4) var(--space-3);
+  }
+
+  .glass-card,
+  .glass-card-static {
+    padding: var(--space-4);
+  }
 }
 
 @media (max-width: 480px) {

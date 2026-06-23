@@ -95,6 +95,37 @@ app.get('/api/graph', (req, res) => {
   }
 });
 
+// 3. Endpoint: Upload dynamic document to corpus
+app.post('/api/upload', (req, res) => {
+  try {
+    const { name, content } = req.body;
+    if (!name || !content) {
+      return res.status(400).json({ error: 'Filename (name) and content are required.' });
+    }
+
+    // Sanitize filename to prevent directory traversal
+    const safeName = path.basename(name);
+    let finalName = safeName;
+    if (!safeName.endsWith('.md') && !safeName.endsWith('.txt')) {
+      finalName = safeName.replace(/\.[^/.]+$/, "") + '.md';
+    }
+
+    const dirPath = path.resolve('./documents-raw');
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath);
+    }
+
+    const filePath = path.join(dirPath, finalName);
+    fs.writeFileSync(filePath, content, 'utf-8');
+    
+    console.log(`✓ Document uploaded and saved to corpus: ${finalName}`);
+    res.json({ success: true, filename: finalName });
+  } catch (err) {
+    console.error('Error uploading file:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 2. Endpoint: Computed RAG Copilot Chat Q&A
 app.post('/api/chat', async (req, res) => {
   const { message } = req.body;
@@ -175,7 +206,7 @@ app.post('/api/chat', async (req, res) => {
 
     // 4. Generate response (Gemini API or simulation fallback)
     if (genAI) {
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
       
       const prompt = `
 You are the IKIP Expert Copilot, an AI safety and operations assistant for industrial assets.
