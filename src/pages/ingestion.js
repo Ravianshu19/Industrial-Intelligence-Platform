@@ -137,13 +137,13 @@ export function render(container) {
       <div class="glass-card-static entity-preview-card stagger-3">
         <div class="section-header">
           <h2>Cognitive Extraction Preview</h2>
-          <p>Extracted entity tokens from the latest processed document: <strong>DOC-002 (Maintenance WO - E-101)</strong></p>
+          <p>Extracted entity tokens from the latest processed document: <strong id="preview-doc-title">DOC-002 (Maintenance WO - E-101)</strong></p>
         </div>
 
         <div class="entity-preview-container">
           <div class="entity-group">
             <span class="entity-group-label">Equipment Tags:</span>
-            <div class="entity-tags">
+            <div class="entity-tags" id="preview-equipment">
               <span class="entity-tag equipment">E-101</span>
               <span class="entity-tag equipment">CDU-1</span>
               <span class="entity-tag equipment">T-101</span>
@@ -152,7 +152,7 @@ export function render(container) {
 
           <div class="entity-group">
             <span class="entity-group-label">Parameters & Measurements:</span>
-            <div class="entity-tags">
+            <div class="entity-tags" id="preview-parameters">
               <span class="entity-tag parameter">MTBF: 8,760 hrs</span>
               <span class="entity-tag parameter">Tube wall: 2.1mm</span>
               <span class="entity-tag parameter">TAN: 1.5</span>
@@ -162,7 +162,7 @@ export function render(container) {
 
           <div class="entity-group">
             <span class="entity-group-label">Regulatory & Standard Citations:</span>
-            <div class="entity-tags">
+            <div class="entity-tags" id="preview-regulations">
               <span class="entity-tag regulation">API 660</span>
               <span class="entity-tag regulation">ASME Sec VIII</span>
               <span class="entity-tag regulation">OISD-STD-118</span>
@@ -171,7 +171,7 @@ export function render(container) {
 
           <div class="entity-group">
             <span class="entity-group-label">Personnel:</span>
-            <div class="entity-tags">
+            <div class="entity-tags" id="preview-personnel">
               <span class="entity-tag personnel">K. Patel (Maint. Supervisor)</span>
               <span class="entity-tag personnel">D. Singh (Technician)</span>
             </div>
@@ -179,7 +179,7 @@ export function render(container) {
 
           <div class="entity-group">
             <span class="entity-group-label">Key Dates:</span>
-            <div class="entity-tags">
+            <div class="entity-tags" id="preview-dates">
               <span class="entity-tag date">2025-01-08</span>
               <span class="entity-tag date">Next Maint: 2025-07-15</span>
             </div>
@@ -282,6 +282,7 @@ export function render(container) {
     // Read the file as text and upload to server
     let uploadSuccess = false;
     let uploadError = null;
+    let uploadResult = null;
     const reader = new FileReader();
     
     reader.onload = async (event) => {
@@ -300,6 +301,7 @@ export function render(container) {
           throw new Error(errData.error || `Server returned ${res.status}`);
         }
         
+        uploadResult = await res.json();
         uploadSuccess = true;
       } catch (err) {
         console.error('Error during upload:', err);
@@ -335,12 +337,19 @@ export function render(container) {
         } else {
           alert(`Successfully ingested "${fileName}"! Placed into Refinery Database and mapped to the Knowledge Graph.`);
           
+          if (uploadResult && uploadResult.entities) {
+            updatePreviewCard(fileName, uploadResult.entities);
+          }
+          
           // Add a mock document to the documents list array dynamically and redraw list
           const fileExt = fileName.split('.').pop() || 'pdf';
+          const newDocType = fileName.toLowerCase().includes('incident') ? 'incident' : 
+                             fileName.toLowerCase().includes('sop') ? 'sop' : 
+                             fileName.toLowerCase().includes('compliance') ? 'compliance' : 'pid';
           documents.unshift({
             id: `DOC-NEW-${Math.floor(Math.random() * 1000)}`,
             name: fileName.replace(/\.[^/.]+$/, ""),
-            type: 'pid',
+            type: newDocType,
             format: fileExt.toLowerCase(),
             category: 'Uploaded Document',
             plant: 'IOCL Gujarat Refinery',
@@ -348,7 +357,7 @@ export function render(container) {
             uploadDate: new Date().toISOString().split('T')[0],
             size: '2.4 MB',
             status: 'processed',
-            entities: {
+            entities: uploadResult && uploadResult.entities ? uploadResult.entities : {
               equipment: ['E-101', 'CDU-1'],
               parameters: ['250°C'],
               regulations: ['OISD-STD-118'],
@@ -363,6 +372,47 @@ export function render(container) {
         simulateIngestionReset();
       }
     }, 1000);
+  }
+
+  function updatePreviewCard(fileName, entities) {
+    const titleEl = container.querySelector('#preview-doc-title');
+    const equipEl = container.querySelector('#preview-equipment');
+    const paramEl = container.querySelector('#preview-parameters');
+    const regEl = container.querySelector('#preview-regulations');
+    const persEl = container.querySelector('#preview-personnel');
+    const dateEl = container.querySelector('#preview-dates');
+
+    if (titleEl) titleEl.textContent = fileName;
+    
+    if (equipEl) {
+      equipEl.innerHTML = entities.equipment && entities.equipment.length > 0 
+        ? entities.equipment.map(e => `<span class="entity-tag equipment">${e}</span>`).join('')
+        : `<span style="font-size: 11px; color: var(--text-dim);">No equipment tags detected</span>`;
+    }
+    
+    if (paramEl) {
+      paramEl.innerHTML = entities.parameters && entities.parameters.length > 0
+        ? entities.parameters.map(p => `<span class="entity-tag parameter">${p}</span>`).join('')
+        : `<span style="font-size: 11px; color: var(--text-dim);">No parameters detected</span>`;
+    }
+
+    if (regEl) {
+      regEl.innerHTML = entities.regulations && entities.regulations.length > 0
+        ? entities.regulations.map(r => `<span class="entity-tag regulation">${r}</span>`).join('')
+        : `<span style="font-size: 11px; color: var(--text-dim);">No citations detected</span>`;
+    }
+
+    if (persEl) {
+      persEl.innerHTML = entities.personnel && entities.personnel.length > 0
+        ? entities.personnel.map(p => `<span class="entity-tag personnel">${p}</span>`).join('')
+        : `<span style="font-size: 11px; color: var(--text-dim);">No personnel detected</span>`;
+    }
+
+    if (dateEl) {
+      dateEl.innerHTML = entities.dates && entities.dates.length > 0
+        ? entities.dates.map(d => `<span class="entity-tag date">${d}</span>`).join('')
+        : `<span class="entity-tag date">${new Date().toISOString().split('T')[0]}</span>`;
+    }
   }
 
 

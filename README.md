@@ -51,8 +51,19 @@ IKIP is designed as a decoupled 3-tier platform that separates document storage,
 
 ```
 ikip/
+├── docs/
+│   ├── architecture.md          # System design & data flow specification
+│   └── architecture.png         # Flowchart architecture diagram
 ├── documents-raw/
-│   └── sample-oisd-excerpt.md   # Raw industrial safety guidelines (RAG source)
+│   ├── sample-oisd-excerpt.md   # Refinery layout and spacing rules (OISD)
+│   ├── sop-cdu1-esd.md          # Emergency Shutdown Procedure SOP (CDU-1)
+│   ├── cpcb-compliance-record.md# Stack emission limits compliance log (CPCB)
+│   ├── hira-cdu1-crude.md       # Hazard identification & risk assessment (CDU-1)
+│   ├── oem-spec-e101.md         # Manufacturer design specs for Heat Exchanger E-101
+│   ├── turnaround-schedule-2025.# Planned turnaround path activities (CDU-1)
+│   ├── maintenance-wo-e101-tube.# Cleaning work order audit logs (E-101)
+│   ├── regulatory-filing-peso.md# Statutory operating license filings (PESO)
+│   └── compliance-audit-dgfasli.# Statutory safety audit report on LPG bullets (DGFASLI)
 ├── src/
 │   ├── components/              # Reusable layout shells (sidebar, topbar)
 │   ├── data/                    # Simulated databases
@@ -62,7 +73,7 @@ ikip/
 │   └── router.js                # Client-side hash router
 ├── server/
 │   └── parser.js                # Heuristic regex entity extractor
-├── server.js                    # Express API endpoints (/api/chat, /api/graph)
+├── server.js                    # Express API endpoints (/api/chat, /api/graph, /api/upload)
 ├── vite.config.js               # Proxy setup for /api routing
 └── README.md                    # Startup & architecture guide
 ```

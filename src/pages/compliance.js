@@ -17,8 +17,20 @@ export function render(container) {
     <div class="page compliance-page">
       <!-- Page Header -->
       <div class="page-header animate-fade-in-down">
-        <h1>Quality & Compliance Intelligence</h1>
-        <p>Regulatory tracking, gap analysis, and statutory audit readiness assessment</p>
+        <div class="flex-between" style="align-items: center; width: 100%;">
+          <div>
+            <h1>Quality & Compliance Intelligence</h1>
+            <p>Regulatory tracking, gap analysis, and statutory audit readiness assessment</p>
+          </div>
+          <button class="btn btn-primary" id="generate-package-btn" style="display: inline-flex; align-items: center; gap: 8px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Generate Audit Package
+          </button>
+        </div>
       </div>
 
       <!-- Summary Grid -->
@@ -226,4 +238,51 @@ export function render(container) {
       ringFill.style.strokeDashoffset = offset;
     }
   }, 100);
+
+  // Bind click listener for generating audit package
+  const btn = container.querySelector('#generate-package-btn');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      let report = `========================================================================\n`;
+      report += `INDUSTRIAL KNOWLEDGE INTELLIGENCE PLATFORM (IKIP) - AUDIT EVIDENCE PACKAGE\n`;
+      report += `========================================================================\n`;
+      report += `Generated: ${new Date().toLocaleString()}\n`;
+      report += `Plant Location: IOCL Gujarat Refinery\n`;
+      report += `Overall Compliance Index: ${overallComplianceScore}%\n`;
+      report += `Tracked Frameworks: 8 (OISD, IBR, PESO, API, ISO)\n`;
+      report += `Active Regulatory Gaps: ${complianceGaps.length}\n`;
+      report += `========================================================================\n\n`;
+      
+      report += `SECTION 1: ACTIVE COMPLIANCE GAPS\n`;
+      report += `------------------------------------------------------------------------\n`;
+      complianceGaps.forEach((gap, index) => {
+        report += `${index + 1}. [${gap.severity.toUpperCase()}] ${gap.title}\n`;
+        report += `   Requirement: ${gap.requirement}\n`;
+        report += `   Description: ${gap.description}\n`;
+        report += `   Target Due Date: ${gap.dueDate}\n`;
+        report += `   Responsible Owner: ${gap.owner}\n`;
+        report += `   Status: In Progress\n\n`;
+      });
+
+      report += `SECTION 2: AUDIT READINESS CHECKLIST STATUS\n`;
+      report += `------------------------------------------------------------------------\n`;
+      auditReadiness.forEach((item, index) => {
+        report += `${index + 1}. [${item.status.toUpperCase()}] ${item.name}\n`;
+        report += `   Details: ${item.details}\n\n`;
+      });
+      
+      report += `========================================================================\n`;
+      report += `END OF COMPLIANCE EVIDENCE PACKAGE\n`;
+      report += `========================================================================\n`;
+
+      const blob = new Blob([report], { type: 'text/plain;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `ikip-audit-evidence-package-${new Date().toISOString().split('T')[0]}.txt`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    });
+  }
 }

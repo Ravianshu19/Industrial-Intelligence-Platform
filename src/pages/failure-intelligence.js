@@ -197,6 +197,12 @@ export function render(container) {
               <p>Capturing critical field expert operational wisdom before retirement</p>
             </div>
 
+            <!-- Demographics Urgency Callout -->
+            <div class="urgency-alert-banner" style="background: rgba(239, 68, 68, 0.1); border-left: 4px solid var(--danger-500); padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); margin-top: var(--space-3); margin-bottom: var(--space-4); font-size: var(--text-sm); line-height: 1.5; color: var(--text-primary);">
+              <strong style="color: var(--danger-400); display: block; margin-bottom: 4px; font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;">⚠️ Critical Demographic Alert</strong>
+              Approximately <strong>25% of India's senior industrial operations engineers</strong> are projected to retire within the next decade. Immediate cognitive extraction is prioritized for the <strong>38 tracked field experts</strong> scheduled to retire within 5 years to prevent critical knowledge loss.
+            </div>
+
             <!-- Preservation Stats -->
             <div class="kg-stats-grid" style="margin-top: 15px; margin-bottom: 20px;">
               <div class="kg-stat">

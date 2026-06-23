@@ -222,6 +222,19 @@ export function render(container) {
     const msgDiv = document.createElement('div');
     msgDiv.className = 'message assistant animate-fade-in-up';
     
+    let discoveryHtml = '';
+    if (resp.discovery) {
+      discoveryHtml = `
+        <div class="message-discovery-badge" style="display: inline-flex; align-items: center; gap: 6px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.2); color: var(--success-400); padding: var(--space-1) var(--space-3); border-radius: var(--radius-md); font-size: var(--text-xs); margin-top: var(--space-2); margin-bottom: var(--space-2); font-weight: 600;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
+            <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
+            <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+          </svg>
+          <span>${resp.discovery}</span>
+        </div>
+      `;
+    }
+
     let sourcesHtml = '';
     if (resp.sources && resp.sources.length > 0) {
       sourcesHtml = `
@@ -260,6 +273,7 @@ export function render(container) {
       <div class="message-avatar">AI</div>
       <div class="message-bubble">
         ${formatResponseText(resp.answer)}
+        ${discoveryHtml}
         ${sourcesHtml}
         ${followupsHtml}
       </div>
