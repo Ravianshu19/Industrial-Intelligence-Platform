@@ -16,6 +16,37 @@ IKIP is a Single-Page Application (SPA) designed to unify fragmented industrial 
 
 ---
 
+## System Architecture & Data Flow
+
+IKIP is designed as a decoupled 3-tier platform that separates document storage, cognitive processing, and user interaction:
+
+```
+  ┌──────────────────────────────────────────────────────────┐
+  │                 Visualization Frontend                   │
+  │     (Vite + Vanilla JS + D3.js Graph + Chart.js SPA)     │
+  └───────────────────────────┬──────────────────────────────┘
+                              │ HTTP Requests (JSON)
+                              ▼
+  ┌──────────────────────────────────────────────────────────┐
+  │                   Node.js Express API                    │
+  │    (Real-time D3 Graph Extractor & Copilot Chat RAG)    │
+  └───────────────────────────┬──────────────────────────────┘
+                              │ Reads / Writes Files
+                              ▼
+  ┌──────────────────────────────────────────────────────────┐
+  │                Refinery Corpus Database                  │
+  │      (Raw Markdown Documents in documents-raw/)          │
+  └──────────────────────────────────────────────────────────┘
+```
+
+1. **Ingestion & Storage**: When users upload files, the frontend reads them as text using the `FileReader` API and POSTs them to `/api/upload`. The server writes these documents directly to `documents-raw/`, persistently growing the refinery's corpus.
+2. **Cognitive Extraction**: When the D3 graph loads, `/api/graph` executes our parser. It scans raw text using structured regex patterns to discover equipment tags (e.g. `E-101`), parameters, regulations, and personnel. Relationships are derived via paragraph proximity rules.
+3. **Computed RAG Engine**: Chat queries posted to `/api/chat` are compared against all documents in the corpus using dynamic keyword overlap scoring. The top documents are retrieved as prompt context and sent to the **Gemini 2.0 Flash** model. Source citation objects and confidence percentages are computed dynamically based on similarity metrics.
+
+*For the complete detailed specification and visual flowchart, see the [System Architecture Specification](docs/architecture.md).*
+
+---
+
 ## Project Structure
 
 ```
