@@ -169,11 +169,11 @@ export function render(container) {
                       <strong class="gap-title">${gap.title}</strong>
                       <span class="badge ${badgeClass}">${gap.severity.toUpperCase()}</span>
                     </div>
-                    <div class="gap-desc">${gap.description}</div>
+                    <div class="gap-desc">${gap.desc}</div>
                     <div class="gap-meta">
                       <span>Ref: <strong>${gap.requirement}</strong></span> • 
                       <span>Due: <strong>${gap.dueDate}</strong></span> • 
-                      <span>Responsible: <strong>${gap.owner}</strong></span>
+                      <span>Responsible Area: <strong>${gap.area}</strong></span>
                     </div>
                   </div>
                 `;
@@ -215,7 +215,7 @@ export function render(container) {
                     </div>
                     <div class="audit-info">
                       <div class="audit-name">${item.name}</div>
-                      <div class="audit-detail">${item.details}</div>
+                      <div class="audit-detail">${item.detail}</div>
                     </div>
                   </div>
                 `;
@@ -258,9 +258,9 @@ export function render(container) {
       complianceGaps.forEach((gap, index) => {
         report += `${index + 1}. [${gap.severity.toUpperCase()}] ${gap.title}\n`;
         report += `   Requirement: ${gap.requirement}\n`;
-        report += `   Description: ${gap.description}\n`;
+        report += `   Description: ${gap.desc}\n`;
         report += `   Target Due Date: ${gap.dueDate}\n`;
-        report += `   Responsible Owner: ${gap.owner}\n`;
+        report += `   Responsible Area: ${gap.area}\n`;
         report += `   Status: In Progress\n\n`;
       });
 
@@ -268,7 +268,7 @@ export function render(container) {
       report += `------------------------------------------------------------------------\n`;
       auditReadiness.forEach((item, index) => {
         report += `${index + 1}. [${item.status.toUpperCase()}] ${item.name}\n`;
-        report += `   Details: ${item.details}\n\n`;
+        report += `   Details: ${item.detail}\n\n`;
       });
       
       report += `========================================================================\n`;
