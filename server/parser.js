@@ -15,10 +15,30 @@ const nodeTypeConfig = {
 
 // Blacklist of terms that might match equipment regex but are actually something else
 const equipmentBlacklist = new Set([
-  'ASME', 'OISD', 'TEMA', 'RPM', 'HTML', 'VITE', 'D3', 'API', 'IS', 'ISO', 
-  'LEL', 'DCS', 'SIL', 'SIF', 'PPE', 'NaOH', 'TEMA', 'CAPA', 'ASME-Sec', 
+  'ASME', 'OISD', 'TEMA', 'RPM', 'HTML', 'VITE', 'D3', 'API', 'IS', 'ISO',
+  'LEL', 'DCS', 'SIL', 'SIF', 'PPE', 'NaOH', 'TEMA', 'CAPA', 'ASME-Sec',
   'ASME-Section', 'ASME-B31', 'OISD-STD', 'ISO-10816', 'ASME-B31.3', 'ASME-B313'
 ]);
+
+// Prefixes that denote administrative/document identifiers (not physical assets).
+// e.g. AUD-DGFASLI-2025 (audit id), COMP-CPCB-2025 (compliance record id),
+// GAP-003 (finding marker), LOG-2025-03 (log id), WO-2025-0142 (work order id).
+const DOC_ID_PREFIXES = new Set([
+  'AUD', 'COMP', 'GAP', 'DOC', 'LOG', 'INC', 'WO', 'REC', 'REP', 'REF', 'REV',
+  'CAPA', 'FORM', 'ANNEX', 'SEC', 'FIG', 'TBL', 'ITEM', 'VER', 'TA', 'CDU1',
+  'HIRA', 'PERMIT'
+]);
+
+// True when a candidate tag is actually a document/admin identifier rather than
+// a piece of equipment — filters out the KG noise (GAP-003, AUD-…-2025, etc.).
+function isDocumentIdentifier(tag) {
+  const segments = tag.split('-');
+  const prefix = segments[0].toUpperCase();
+  if (DOC_ID_PREFIXES.has(prefix)) return true;
+  // Anything carrying a 4-digit calendar year is a dated record/id, not an asset.
+  if (segments.some(s => /^(19|20)\d{2}$/.test(s))) return true;
+  return false;
+}
 
 export function parseDocument(filePath) {
   const content = fs.readFileSync(filePath, 'utf-8');
@@ -66,12 +86,13 @@ export function parseDocument(filePath) {
   while ((match = patterns.equipment.exec(content)) !== null) {
     const val = match[0];
     // Filter out blacklisted items or matches that are part of regulation prefixes
-    if (!equipmentBlacklist.has(val) && 
-        !val.startsWith('OISD') && 
-        !val.startsWith('API') && 
-        !val.startsWith('ASME') && 
-        !val.startsWith('ISO') && 
-        !val.startsWith('IS')) {
+    if (!equipmentBlacklist.has(val) &&
+        !val.startsWith('OISD') &&
+        !val.startsWith('API') &&
+        !val.startsWith('ASME') &&
+        !val.startsWith('ISO') &&
+        !val.startsWith('IS') &&
+        !isDocumentIdentifier(val)) {
       equipmentMatches.push({ value: val, index: match.index });
     }
   }
@@ -82,9 +103,12 @@ export function parseDocument(filePath) {
     parameterMatches.push({ value: match[0], index: match.index });
   }
 
-  // Extract Personnel
+  // Extract Personnel. Guard against unit symbols masquerading as initials —
+  // e.g. "90 degrees C. Seal flush rate" must not yield a person "C. Seal".
   const personnelMatches = [];
   while ((match = patterns.personnel.exec(content)) !== null) {
+    const before = content.slice(Math.max(0, match.index - 14), match.index);
+    if (/(\d|degrees?|°)\s*$/i.test(before)) continue; // preceded by a measurement → it's a unit
     personnelMatches.push({ value: match[0], index: match.index });
   }
 

@@ -8,7 +8,10 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import Anthropic from '@anthropic-ai/sdk';
 import { parseDocument } from './server/parser.js';
+import { buildIndex, retrieve } from './server/retriever.js';
+import { ingestBuffer } from './server/ingest.js';
 
 // Load environment variables
 dotenv.config();
@@ -17,23 +20,67 @@ const app = express();
 const port = process.env.PORT || 3001;
 
 app.use(cors());
-app.use(express.json());
+// Allow larger bodies for base64-encoded PDF / image uploads.
+app.use(express.json({ limit: '25mb' }));
 
-// Initialize Gemini API client if key is present
+// ----------------------------------------------------------------------------
+// LLM providers. The copilot tries them in order and falls back gracefully, so
+// a single provider's quota/outage no longer drops the demo to canned answers.
+//   1. Gemini (GEMINI_API_KEY)   2. Claude (ANTHROPIC_API_KEY)   3. simulation
+// Claude also powers the vision OCR / P&ID ingestion path.
+// ----------------------------------------------------------------------------
 const geminiKey = process.env.GEMINI_API_KEY;
-let genAI = null;
+const anthropicKey = process.env.ANTHROPIC_API_KEY;
 
-if (geminiKey) {
-  console.log('✓ GEMINI_API_KEY found. LLM integration active.');
-  genAI = new GoogleGenerativeAI(geminiKey);
-} else {
-  console.warn('⚠️ No GEMINI_API_KEY found in environment. Copilot will run in simulated mode.');
+const genAI = geminiKey ? new GoogleGenerativeAI(geminiKey) : null;
+const anthropic = anthropicKey ? new Anthropic({ apiKey: anthropicKey }) : null;
+
+const primaryProvider = anthropic ? 'Claude' : genAI ? 'Gemini' : 'simulation';
+console.log(`✓ LLM providers: Claude ${anthropicKey ? 'ON' : 'off'} | Gemini ${geminiKey ? 'ON' : 'off'} → primary: ${primaryProvider}`);
+if (!genAI && !anthropic) {
+  console.warn('⚠️ No LLM key found. Copilot will run in simulated fallback mode.');
 }
 
-// Stopwords list for search query tokenization
-const stopwords = new Set([
-  'what', 'is', 'the', 'of', 'and', 'a', 'to', 'in', 'on', 'for', 'with', 'at', 'by', 'an', 'be', 'this', 'that', 'from', 'are', 'was', 'were', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'but', 'if', 'or', 'because', 'as', 'until', 'while', 'about', 'into', 'through', 'over', 'after', 'before', 'should', 'would', 'could', 'how', 'why', 'where', 'when', 'who', 'which', 'about', 'details', 'history', 'limit', 'limits', 'exchanger', 'turbine', 'tank'
-]);
+// Default Claude model. Opus 4.8 is the most capable Opus-tier model; override
+// via ANTHROPIC_MODEL (e.g. claude-sonnet-4-6 for higher-volume/lower-cost).
+const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
+
+async function callClaude(prompt) {
+  const msg = await anthropic.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 1024,
+    messages: [{ role: 'user', content: prompt }]
+  });
+  const answer = msg.content.map(b => (b.type === 'text' ? b.text : '')).join('').trim();
+  return { answer, provider: CLAUDE_MODEL };
+}
+
+async function callGemini(prompt) {
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  const result = await model.generateContent(prompt);
+  return { answer: result.response.text(), provider: 'gemini-2.0-flash' };
+}
+
+// Generate an answer from the retrieved RAG context, trying each available
+// provider in turn. Claude is preferred when configured (this is the primary
+// copilot engine); Gemini is the fallback. Returns null if every provider
+// fails, and the caller then uses the deterministic simulation.
+async function generateAnswer(prompt) {
+  const providers = [];
+  if (anthropic) providers.push(['Claude', callClaude]);
+  if (genAI) providers.push(['Gemini', callGemini]);
+
+  for (let i = 0; i < providers.length; i++) {
+    const [label, call] = providers[i];
+    try {
+      return await call(prompt);
+    } catch (err) {
+      const next = i + 1 < providers.length ? `trying ${providers[i + 1][0]}` : 'falling back to simulation';
+      console.warn(`⚠️ ${label} failed, ${next}:`, err.status || err.message);
+    }
+  }
+  return null;
+}
 
 // Helper: Scan documents-raw directory
 function getCorpusFiles() {
@@ -95,15 +142,41 @@ app.get('/api/graph', (req, res) => {
   }
 });
 
-// 3. Endpoint: Upload dynamic document to corpus
-app.post('/api/upload', (req, res) => {
+// Map ingestion error codes to friendly, actionable messages.
+const INGEST_ERRORS = {
+  PDF_SCANNED_NO_OCR: 'This PDF appears to be a scan with no text layer. Set ANTHROPIC_API_KEY to enable vision OCR.',
+  PDF_SCANNED_NEEDS_RASTER: 'Scanned PDF detected. Re-upload the page as a PNG/JPG image to run vision OCR.',
+  OCR_NO_KEY: 'Image OCR requires an Anthropic API key. Set ANTHROPIC_API_KEY to enable it.'
+};
+
+// 3. Endpoint: Upload document to corpus.
+// Accepts either { name, content } (plain text/markdown) or
+// { name, contentBase64 } (binary PDF/image → extracted via the ingest pipeline).
+app.post('/api/upload', async (req, res) => {
   try {
-    const { name, content } = req.body;
-    if (!name || !content) {
-      return res.status(400).json({ error: 'Filename (name) and content are required.' });
+    const { name, content, contentBase64 } = req.body;
+    if (!name || (!content && !contentBase64)) {
+      return res.status(400).json({ error: 'Filename (name) and content or contentBase64 are required.' });
     }
 
-    // Sanitize filename to prevent directory traversal
+    // Run heterogeneous inputs through the ingestion pipeline to obtain Markdown.
+    let markdown;
+    let method = 'text';
+    try {
+      if (contentBase64) {
+        const buffer = Buffer.from(contentBase64, 'base64');
+        ({ markdown, method } = await ingestBuffer(buffer, name, anthropic));
+      } else {
+        markdown = content;
+      }
+    } catch (ingestErr) {
+      const code = ingestErr.message.split(':')[0];
+      const friendly = INGEST_ERRORS[code] || `Could not ingest file: ${ingestErr.message}`;
+      console.warn('⚠️ Ingestion failed:', ingestErr.message);
+      return res.status(422).json({ error: friendly, code });
+    }
+
+    // Sanitize filename to prevent directory traversal; corpus is always Markdown.
     const safeName = path.basename(name);
     let finalName = safeName;
     if (!safeName.endsWith('.md') && !safeName.endsWith('.txt')) {
@@ -116,10 +189,10 @@ app.post('/api/upload', (req, res) => {
     }
 
     const filePath = path.join(dirPath, finalName);
-    fs.writeFileSync(filePath, content, 'utf-8');
-    
-    console.log(`✓ Document uploaded and saved to corpus: ${finalName}`);
-    
+    fs.writeFileSync(filePath, markdown, 'utf-8');
+
+    console.log(`✓ Document ingested (${method}) and saved to corpus: ${finalName}`);
+
     // Parse the newly uploaded document dynamically
     const { nodes } = parseDocument(filePath);
     const entities = {
@@ -130,7 +203,7 @@ app.post('/api/upload', (req, res) => {
       dates: [new Date().toISOString().split('T')[0]] // default current date
     };
 
-    res.json({ success: true, filename: finalName, entities });
+    res.json({ success: true, filename: finalName, method, entities });
   } catch (err) {
     console.error('Error uploading file:', err);
     res.status(500).json({ error: err.message });
@@ -146,60 +219,34 @@ app.post('/api/chat', async (req, res) => {
 
   try {
     const files = getCorpusFiles();
-    
-    // 1. Query tokenization & processing
-    const queryTerms = message.toLowerCase()
-      .replace(/[^\w\s-]/g, '') // remove punctuation
-      .split(/\s+/)
-      .filter(term => term.length > 2 && !stopwords.has(term));
 
-    console.log(`Processing search query: "${message}" -> terms:`, queryTerms);
+    // 1. Build the TF-IDF vector index over the live corpus and rank documents
+    //    by cosine similarity (chunk-level, IDF-weighted, top-K). This replaces
+    //    the old binary keyword-overlap scorer.
+    const index = buildIndex(files);
+    const matchedDocs = retrieve(message, index, { topK: 5, floor: 0.04 });
 
-    // 2. Compute similarity overlap score for each document in the corpus
-    const scoredDocs = [];
+    console.log(`Vector retrieval for "${message}" -> ${matchedDocs.length} docs (top score ${matchedDocs[0]?.score.toFixed(3) || 'n/a'})`);
 
-    files.forEach(filePath => {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const lowerContent = content.toLowerCase();
-      
-      let matchedTermsCount = 0;
-      queryTerms.forEach(term => {
-        if (lowerContent.includes(term)) {
-          matchedTermsCount++;
-        }
-      });
+    const topScore = matchedDocs[0]?.score || 1;
 
-      // Score: fraction of query terms matched in document
-      const score = queryTerms.length > 0 ? (matchedTermsCount / queryTerms.length) : 0;
-      
-      // Parse document title from first header line
-      const titleLine = content.split('\n')[0].replace(/^#+\s*/, '') || path.basename(filePath);
-
-      scoredDocs.push({
-        path: filePath,
-        name: titleLine,
-        content: content,
-        score: score
-      });
-    });
-
-    // 3. Sort by score descending and retrieve matching documents
-    const matchedDocs = scoredDocs
-      .filter(doc => doc.score > 0)
-      .sort((a, b) => b.score - a.score);
-
-    // Determine RAG context (use matched documents, or fallback to all files as broad context if score is 0)
+    // Determine RAG context (use retrieved chunks, or fall back to broad context).
     let retrievedContext = '';
     let citations = [];
 
     if (matchedDocs.length > 0) {
-      retrievedContext = matchedDocs.map(doc => `[Source: ${doc.name}]\n${doc.content}`).join('\n\n');
+      // Tight context: only the strongest chunks from the top documents.
+      retrievedContext = matchedDocs
+        .map(doc => `[Source: ${doc.docName}]\n${doc.snippets.map(s => s.text).join('\n')}`)
+        .join('\n\n');
       citations = matchedDocs.map(doc => {
-        // Calculate confidence percentage dynamically based on match score
-        const confidence = Math.round(72 + 27 * doc.score); // returns value between 72% and 99%
-        
+        // Confidence derived from cosine similarity, scaled relative to the best
+        // match so the lead source reads ~99% and weaker matches taper honestly.
+        const rel = topScore > 0 ? doc.score / topScore : 0;
+        const confidence = Math.round(60 + 39 * rel); // 60%..99%
+
         let type = 'Regulatory Standard';
-        const nameLower = doc.name.toLowerCase();
+        const nameLower = doc.docName.toLowerCase();
         if (nameLower.includes('maintenance') || nameLower.includes('log') || nameLower.includes('work order') || nameLower.includes('wo-e101')) {
           type = 'Maintenance Record';
         } else if (nameLower.includes('compliance') || nameLower.includes('cpcb') || nameLower.includes('peso') || nameLower.includes('dgfasli') || nameLower.includes('regulatory')) {
@@ -217,15 +264,18 @@ app.post('/api/chat', async (req, res) => {
         }
 
         return {
-          name: doc.name,
+          name: doc.docName,
           type: type,
           confidence: Math.min(confidence, 99),
           format: 'pdf'
         };
       });
     } else {
-      // Fallback context: merge all files
-      retrievedContext = scoredDocs.map(doc => `[Source: ${doc.name}]\n${doc.content}`).join('\n\n');
+      // Fallback context: no chunk cleared the relevance floor, so supply the
+      // full corpus as broad context and flag low-confidence generic sources.
+      retrievedContext = files
+        .map(fp => `[Source: ${path.basename(fp)}]\n${fs.readFileSync(fp, 'utf-8')}`)
+        .join('\n\n');
       citations = [
         { name: 'OISD-STD-118 Excerpt Layout Standard', type: 'Regulatory Compliance', confidence: 70, format: 'pdf' },
         { name: 'Maintenance WO - E-101 Tube Bundle', type: 'Maintenance Record', confidence: 65, format: 'pdf' }
@@ -238,12 +288,8 @@ app.post('/api/chat', async (req, res) => {
       ? `Cross-functional Discovery: Connected ${uniqueTypes.length} document types (${uniqueTypes.join(' + ')})`
       : `Domain Lookup: Connected to ${citations[0]?.type || 'Refinery Repository'}`;
 
-    // 4. Generate response (Gemini API or simulation fallback)
-    if (genAI) {
-      try {
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-        
-        const prompt = `
+    // 4. Generate response — try each LLM provider, else deterministic simulation.
+    const prompt = `
 You are the IKIP Expert Copilot, an AI safety and operations assistant for industrial assets.
 You have access to the following reference documents context retrieved from the refinery repository:
 ---
@@ -259,30 +305,29 @@ Rules:
 4. If the answer is not found in the provided context, state that clearly and offer general refinery safety advice.
         `;
 
-        const result = await model.generateContent(prompt);
-        const answer = result.response.text();
+    const generated = await generateAnswer(prompt);
 
-        // Generate follow-ups based on mentioned terms
-        const followups = [];
-        const lowerAnswer = answer.toLowerCase();
-        if (lowerAnswer.includes('e-101')) {
-          followups.push('What are the safety limits of Heat Exchanger E-101?', 'Who reviewed E-101 design spec?');
-        }
-        if (lowerAnswer.includes('gt-101') || lowerAnswer.includes('vibration')) {
-          followups.push('What is the ISO limit for GT-101 vibration?', 'What is the speed of GT-101?');
-        }
-        if (lowerAnswer.includes('tk-15') || lowerAnswer.includes('fire')) {
-          followups.push('What caused the floating roof fire at TK-15?', 'What is the safety flow rate for TK-15?');
-        }
-        if (followups.length < 2) {
-          followups.push('What is the emergency shutdown procedure?', 'List compliance standards for CDU-1');
-        }
+    if (generated) {
+      const { answer, provider } = generated;
+      console.log(`✓ Answer generated by ${provider}`);
 
-        res.json({ answer, sources: citations, followups, discovery });
-      } catch (geminiErr) {
-        console.warn('⚠️ Gemini API error (quota/rate-limit), falling back to simulation:', geminiErr.message);
-        runSimulationChat(message, citations, [], discovery, res);
+      // Generate follow-ups based on mentioned terms
+      const followups = [];
+      const lowerAnswer = answer.toLowerCase();
+      if (lowerAnswer.includes('e-101')) {
+        followups.push('What are the safety limits of Heat Exchanger E-101?', 'Who reviewed E-101 design spec?');
       }
+      if (lowerAnswer.includes('gt-101') || lowerAnswer.includes('vibration')) {
+        followups.push('What is the ISO limit for GT-101 vibration?', 'What is the speed of GT-101?');
+      }
+      if (lowerAnswer.includes('tk-15') || lowerAnswer.includes('fire')) {
+        followups.push('What caused the floating roof fire at TK-15?', 'What is the safety flow rate for TK-15?');
+      }
+      if (followups.length < 2) {
+        followups.push('What is the emergency shutdown procedure?', 'List compliance standards for CDU-1');
+      }
+
+      res.json({ answer, sources: citations, followups, discovery, provider });
     } else {
       runSimulationChat(message, citations, [], discovery, res);
     }

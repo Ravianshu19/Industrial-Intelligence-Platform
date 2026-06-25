@@ -95,9 +95,13 @@ npm install
 ### 3. Setup Environment Variables
 Create a `.env` file in the root directory:
 ```bash
-GEMINI_API_KEY=your_actual_gemini_api_key_here
+GEMINI_API_KEY=your_gemini_api_key_here       # primary LLM provider
+ANTHROPIC_API_KEY=your_anthropic_api_key_here # fallback LLM + vision OCR for scans/P&IDs
 ```
-*(If no API key is specified, the Copilot runs in simulated local matching fallback mode, allowing you to test the interface without a key).*
+The Copilot uses a **provider fallback chain**: it tries Gemini first, then Claude, and only
+drops to the deterministic local-simulation mode if every provider is unavailable (missing key,
+quota/429, or outage). Configuring **either** key is enough for live answers — no code change
+needed. `ANTHROPIC_API_KEY` additionally enables vision-based OCR for scanned images and P&IDs.
 
 ### 4. Running the Platform
 
@@ -117,7 +121,8 @@ Open [http://localhost:5173/](http://localhost:5173/) in your web browser.
 
 ---
 
-## Dynamic Entity Extraction & RAG Pipeline
+## Universal Ingestion, Entity Extraction & Vector RAG Pipeline
 
-1. **Extraction**: On server startup and during `/api/graph` calls, `server/parser.js` reads the raw document `documents-raw/sample-oisd-excerpt.md`. It scans the text via regex and heuristics, cataloging equipment tags (e.g. `E-101`), regulations (`OISD-STD-118`), parameters, and personnel, mapping them into D3-compatible nodes and links.
-2. **RAG Context**: When a chat request hits `/api/chat`, the server pulls the raw text of `sample-oisd-excerpt.md` and injects it directly into the Gemini model prompt as system context, ensuring the LLM replies with real facts from your refinery manual.
+1. **Universal Ingestion** (`server/ingest.js`): `/api/upload` accepts plain text/Markdown, **digital PDFs** (text extracted offline via `pdf-parse`), and **images / scanned drawings** (transcribed via Claude vision OCR, which also digitises P&ID equipment tags and connections). Everything is normalised to Markdown and persisted into `documents-raw/`, growing the live corpus.
+2. **Entity Extraction** (`server/parser.js`): during `/api/graph` calls every corpus file is scanned with regex + heuristics to catalog equipment tags (`E-101`), regulations (`OISD-STD-118`), parameters, and personnel into D3 nodes/links. Administrative identifiers (document IDs, audit/gap codes, year-stamped records like `AUD-DGFASLI-2025`) are filtered out so they don't pollute the asset graph.
+3. **Vector RAG Retrieval** (`server/retriever.js`): `/api/chat` builds a **TF-IDF index** over chunked corpus text and ranks documents by **cosine similarity** (IDF-weighted, chunk-level, top-K with a relevance floor) — replacing naive keyword overlap. The strongest chunks are injected as context for the LLM, and source citations carry similarity-derived confidence scores.
