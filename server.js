@@ -429,7 +429,7 @@ function runSimulationChat(message, citations, followups, discovery, res) {
     responseFollowups = ['What is the maintenance history of heat exchanger E-101?', 'What is the emergency shutdown procedure?'];
   }
 
-  res.json({ answer, sources: citations, followups: responseFollowups, discovery });
+  res.json({ answer, sources: citations, followups: responseFollowups, discovery, provider: 'local-simulation' });
 }
 
 // Start Server

@@ -28,7 +28,7 @@ export function render(container) {
             </div>
             <div class="copilot-info">
               <h2>IKIP Expert Copilot</h2>
-              <div class="copilot-status">Online — Connected to 1,247 documents</div>
+              <div class="copilot-status" id="copilot-provider-status">Online — Connected to 1,247 documents</div>
             </div>
           </div>
  
@@ -190,7 +190,7 @@ export function render(container) {
       }
     }
 
-    return bestMatch || {
+    const res = bestMatch ? { ...bestMatch } : {
       answer: `I could not find an exact match in my local knowledge base for your query. 
                However, I've run a vector search across the 1,247 indexed refinery documents. 
                
@@ -206,6 +206,8 @@ export function render(container) {
         'Show CDU-1 emergency shutdown procedures'
       ]
     };
+    res.provider = 'local-simulation';
+    return res;
   }
 
   function appendUserMessage(text) {
@@ -348,6 +350,11 @@ export function render(container) {
       }
       appendAssistantResponse(data);
       
+      const providerStatus = container.querySelector('#copilot-provider-status');
+      if (providerStatus && data.provider) {
+        providerStatus.innerHTML = `Online — Powered by <span class="provider-badge" style="background: rgba(6, 182, 212, 0.15); color: var(--cyan-400); border: 1px solid rgba(6, 182, 212, 0.2); padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase;">${data.provider}</span>`;
+      }
+      
       // Increment session counter
       const currentCount = parseInt(localStorage.getItem('ikip_query_count') || '342', 10);
       const newCount = currentCount + 1;
@@ -361,6 +368,11 @@ export function render(container) {
       // Fallback local match
       const response = findResponse(text);
       appendAssistantResponse(response);
+
+      const providerStatus = container.querySelector('#copilot-provider-status');
+      if (providerStatus && response.provider) {
+        providerStatus.innerHTML = `Online — Powered by <span class="provider-badge" style="background: rgba(6, 182, 212, 0.15); color: var(--cyan-400); border: 1px solid rgba(6, 182, 212, 0.2); padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase;">${response.provider}</span>`;
+      }
       
       // Increment session counter on fallback too
       const currentCount = parseInt(localStorage.getItem('ikip_query_count') || '342', 10);

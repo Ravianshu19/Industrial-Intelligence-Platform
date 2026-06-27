@@ -45,7 +45,7 @@ export function render(container) {
             </div>
             <div class="stat-change up">↑ 8%</div>
           </div>
-          <div class="stat-value">18,432</div>
+          <div class="stat-value" id="stat-entities-count">18,432</div>
           <div class="stat-label">Entities Extracted</div>
           <div class="stat-meta">Equipment, rules, tags</div>
         </div>
@@ -60,9 +60,9 @@ export function render(container) {
             </div>
             <div class="stat-change down">↓ 2%</div>
           </div>
-          <div class="stat-value">89%</div>
+          <div class="stat-value" id="stat-compliance-score">89%</div>
           <div class="stat-label">Compliance Score</div>
-          <div class="stat-meta">7 active gaps detected</div>
+          <div class="stat-meta" id="stat-compliance-meta">7 active gaps detected</div>
         </div>
 
         <div class="stat-card glass-card hover-lift stagger-4">
@@ -169,8 +169,8 @@ export function render(container) {
               <h3>Quality & Compliance</h3>
               <p>OISD standards audit gap analysis, readiness checklists, and statutory scoring.</p>
               <div class="module-card-stats">
-                <span><strong>89%</strong> score</span>
-                <span><strong>7</strong> gaps</span>
+                <span><strong id="compliance-card-score">89%</strong> score</span>
+                <span><strong id="compliance-card-gaps">7</strong> gaps</span>
               </div>
             </div>
 
@@ -294,4 +294,30 @@ export function render(container) {
       if (ingestCardSize) ingestCardSize.textContent = `${stats.corpusSizeKB} KB`;
     })
     .catch(err => console.error('Error fetching dashboard stats:', err));
+
+  // Fetch dynamic insights for compliance score & entities
+  fetch('/api/insights')
+    .then(res => res.json())
+    .then(insights => {
+      const complianceScoreEl = container.querySelector('#stat-compliance-score');
+      const complianceMetaEl = container.querySelector('#stat-compliance-meta');
+      const complianceCardScore = container.querySelector('#compliance-card-score');
+      const complianceCardGaps = container.querySelector('#compliance-card-gaps');
+      const entitiesCountEl = container.querySelector('#stat-entities-count');
+
+      const activeGaps = insights.gaps.length;
+      const compScore = Math.max(40, 100 - (activeGaps * 8));
+      
+      if (complianceScoreEl) complianceScoreEl.textContent = `${compScore}%`;
+      if (complianceMetaEl) complianceMetaEl.textContent = `${activeGaps} active gaps detected`;
+      if (complianceCardScore) complianceCardScore.textContent = `${compScore}%`;
+      if (complianceCardGaps) complianceCardGaps.textContent = activeGaps;
+
+      // Count actual entities from the live graph extraction
+      const totalEntities = (insights.equipment || []).length + (insights.regulations || []).length + (insights.personnel || []).length;
+      if (entitiesCountEl) {
+        entitiesCountEl.textContent = totalEntities;
+      }
+    })
+    .catch(err => console.error('Error fetching dynamic insights for dashboard:', err));
 }
