@@ -12,6 +12,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { parseDocument } from './server/parser.js';
 import { buildIndex, retrieve } from './server/retriever.js';
 import { ingestBuffer } from './server/ingest.js';
+import { computeInsights } from './server/insights.js';
 
 // Load environment variables
 dotenv.config();
@@ -148,6 +149,17 @@ const INGEST_ERRORS = {
   PDF_SCANNED_NEEDS_RASTER: 'Scanned PDF detected. Re-upload the page as a PNG/JPG image to run vision OCR.',
   OCR_NO_KEY: 'Image OCR requires an Anthropic API key. Set ANTHROPIC_API_KEY to enable it.'
 };
+
+// 4. Endpoint: Corpus-derived insights for the Maintenance / Compliance /
+//    Failure pages — equipment health, regulatory coverage, gaps, incidents.
+app.get('/api/insights', (req, res) => {
+  try {
+    res.json(computeInsights(getCorpusFiles()));
+  } catch (err) {
+    console.error('Error computing insights:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // 3. Endpoint: Upload document to corpus.
 // Accepts either { name, content } (plain text/markdown) or

@@ -4,8 +4,16 @@
 
 import Chart from 'chart.js/auto';
 import { equipmentHealth, workOrderHistory, rcaTree, predictiveSchedule, mtbfTrend } from '../data/maintenance.js';
+import { fetchInsights, mapEquipmentHealth } from '../data/live.js';
 
-export function render(container) {
+export async function render(container) {
+  // Pull equipment health from the live corpus (falls back to demo data offline).
+  container.innerHTML = '<div class="empty-state"><h3>Loading corpus intelligence…</h3></div>';
+  const insights = await fetchInsights();
+  const equipment = mapEquipmentHealth(insights) || equipmentHealth;
+  const activeCount = equipment.length;
+  const avgHealth = Math.round(equipment.reduce((s, e) => s + e.healthScore, 0) / equipment.length);
+
   // Helper to render RCA nodes recursively
   function renderRcaNode(node) {
     const childrenHtml = node.children && node.children.length > 0
@@ -41,7 +49,7 @@ export function render(container) {
               </svg>
             </div>
           </div>
-          <div class="stat-value">6</div>
+          <div class="stat-value">${activeCount}</div>
           <div class="stat-label">Active Equipment</div>
           <div class="stat-meta">Monitored refinery assets</div>
         </div>
@@ -53,12 +61,12 @@ export function render(container) {
                 <circle cx="12" cy="12" r="10"/><path d="M8.56 2.75c4.37-1 8.93.55 12.12 3.97M1.88 12c.38 3.51 2.23 6.69 5.12 8.75"/>
               </svg>
             </div>
-            <div class="stat-change up">71%</div>
+            <div class="stat-change up">${avgHealth}%</div>
           </div>
-          <div class="stat-value">71%</div>
+          <div class="stat-value">${avgHealth}%</div>
           <div class="stat-label">Avg Health Score</div>
           <div class="progress-bar" style="margin-top: 8px; height: 6px;">
-            <div class="progress-bar-fill" style="width: 71%; background-color: var(--warning-400);"></div>
+            <div class="progress-bar-fill" style="width: ${avgHealth}%; background-color: var(--warning-400);"></div>
           </div>
         </div>
 
@@ -105,7 +113,7 @@ export function render(container) {
           </div>
 
           <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 15px;">
-            ${equipmentHealth.map(eq => {
+            ${equipment.map(eq => {
               const statusClass = eq.health;
               return `
                 <div class="equipment-card hover-scale" data-id="${eq.id}">

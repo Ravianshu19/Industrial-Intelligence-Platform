@@ -3,9 +3,15 @@
 // ========================================
 
 import Chart from 'chart.js/auto';
-import { incidents, nearMisses, failurePatterns, proactiveWarnings, knowledgePreservation } from '../data/incidents.js';
+import { incidents as staticIncidents, nearMisses, failurePatterns, proactiveWarnings, knowledgePreservation } from '../data/incidents.js';
+import { fetchInsights, mapIncidents } from '../data/live.js';
 
-export function render(container) {
+export async function render(container) {
+  // Pull incidents from the live corpus (falls back to demo data offline).
+  container.innerHTML = '<div class="empty-state"><h3>Loading corpus intelligence…</h3></div>';
+  const insights = await fetchInsights();
+  const incidents = mapIncidents(insights) || staticIncidents;
+
   container.innerHTML = `
     <div class="page failure-intelligence-page">
       <!-- Page Header -->

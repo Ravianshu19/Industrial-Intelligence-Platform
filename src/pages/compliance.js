@@ -3,11 +3,19 @@
 // ========================================
 
 import { complianceFrameworks, complianceGaps, auditReadiness, overallComplianceScore } from '../data/compliance.js';
+import { fetchInsights, mapFrameworks, mapGaps, computeOverallScore } from '../data/live.js';
 
-export function render(container) {
+export async function render(container) {
+  // Pull frameworks + gaps from the live corpus (falls back to demo data offline).
+  container.innerHTML = '<div class="empty-state"><h3>Loading corpus intelligence…</h3></div>';
+  const insights = await fetchInsights();
+  const frameworks = mapFrameworks(insights) || complianceFrameworks;
+  const gaps = mapGaps(insights) || complianceGaps;
+  const overall = insights ? computeOverallScore(gaps) : overallComplianceScore;
+
   // Sort gaps by severity (Critical -> Major -> Minor)
   const severityOrder = { critical: 1, major: 2, minor: 3 };
-  const sortedGaps = [...complianceGaps].sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+  const sortedGaps = [...gaps].sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
 
   // Calculate audit readiness items count
   const readyItemsCount = auditReadiness.filter(item => item.status === 'pass').length;
@@ -44,7 +52,7 @@ export function render(container) {
             </div>
             <div class="stat-change up">89%</div>
           </div>
-          <div class="stat-value">${overallComplianceScore}%</div>
+          <div class="stat-value">${overall}%</div>
           <div class="stat-label">Overall Score</div>
           <div class="stat-meta">Refinery-wide rating</div>
         </div>
@@ -114,7 +122,7 @@ export function render(container) {
                   <circle class="ring-fill" cx="80" cy="80" r="70" id="ring-fill"></circle>
                 </svg>
                 <div class="score-ring-value">
-                  <span class="score-ring-number">${overallComplianceScore}%</span>
+                  <span class="score-ring-number">${overall}%</span>
                   <span class="score-ring-label">Overall Index</span>
                 </div>
               </div>
@@ -128,7 +136,7 @@ export function render(container) {
           </div>
 
           <div class="framework-list" style="margin-top: 15px;">
-            ${complianceFrameworks.map(fw => {
+            ${frameworks.map(fw => {
               const scoreColor = fw.score >= 90 ? 'var(--success-500)' : fw.score >= 80 ? 'var(--warning-500)' : 'var(--danger-500)';
               return `
                 <div class="framework-item hover-scale">
@@ -234,7 +242,7 @@ export function render(container) {
       // Circumference of r=70 is ~440. 
       // Offset = 440 * (1 - score/100)
       const circumference = 440;
-      const offset = circumference * (1 - (overallComplianceScore / 100));
+      const offset = circumference * (1 - (overall / 100));
       ringFill.style.strokeDashoffset = offset;
     }
   }, 100);
@@ -248,14 +256,14 @@ export function render(container) {
       report += `========================================================================\n`;
       report += `Generated: ${new Date().toLocaleString()}\n`;
       report += `Plant Location: IOCL Gujarat Refinery\n`;
-      report += `Overall Compliance Index: ${overallComplianceScore}%\n`;
+      report += `Overall Compliance Index: ${overall}%\n`;
       report += `Tracked Frameworks: 8 (OISD, IBR, PESO, API, ISO)\n`;
-      report += `Active Regulatory Gaps: ${complianceGaps.length}\n`;
+      report += `Active Regulatory Gaps: ${gaps.length}\n`;
       report += `========================================================================\n\n`;
       
       report += `SECTION 1: ACTIVE COMPLIANCE GAPS\n`;
       report += `------------------------------------------------------------------------\n`;
-      complianceGaps.forEach((gap, index) => {
+      gaps.forEach((gap, index) => {
         report += `${index + 1}. [${gap.severity.toUpperCase()}] ${gap.title}\n`;
         report += `   Requirement: ${gap.requirement}\n`;
         report += `   Description: ${gap.desc}\n`;
@@ -283,6 +291,43 @@ export function render(container) {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+
+      // 2. Structured JSON Export Download
+      const jsonEvidence = {
+        packageId: `IKIP-AUDIT-${Math.floor(Math.random() * 100000)}`,
+        timestamp: new Date().toISOString(),
+        refinery: "IOCL Gujarat Refinery",
+        overallComplianceScore: overall,
+        activeGapsCount: gaps.length,
+        activeGaps: gaps.map(g => ({
+          id: g.id,
+          framework: g.framework,
+          requirement: g.requirement,
+          title: g.title,
+          desc: g.desc,
+          area: g.area,
+          dueDate: g.dueDate,
+          impact: g.impact
+        })),
+        auditReadinessChecklist: auditReadiness.map(item => ({
+          name: item.name,
+          status: item.status,
+          detail: item.detail
+        }))
+      };
+      
+      const blobJson = new Blob([JSON.stringify(jsonEvidence, null, 2)], { type: 'application/json;charset=utf-8;' });
+      const urlJson = URL.createObjectURL(blobJson);
+      const linkJson = document.createElement('a');
+      linkJson.href = urlJson;
+      linkJson.setAttribute('download', `ikip-audit-evidence-package-${new Date().toISOString().split('T')[0]}.json`);
+      
+      setTimeout(() => {
+        document.body.appendChild(linkJson);
+        linkJson.click();
+        document.body.removeChild(linkJson);
+        alert('Statutory Compliance Evidence Packages (.txt & structured .json) generated successfully!');
+      }, 300);
     });
   }
 }

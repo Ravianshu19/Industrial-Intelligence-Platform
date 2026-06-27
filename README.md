@@ -53,7 +53,8 @@ IKIP is designed as a decoupled 3-tier platform that separates document storage,
 ikip/
 ├── docs/
 │   ├── architecture.md          # System design & data flow specification
-│   └── architecture.png         # Flowchart architecture diagram
+│   ├── architecture.png         # Flowchart architecture diagram
+│   └── presentation_deck.md     # Slide-by-slide investor & judge pitch deck
 ├── documents-raw/
 │   ├── sample-oisd-excerpt.md   # Refinery layout and spacing rules (OISD)
 │   ├── sop-cdu1-esd.md          # Emergency Shutdown Procedure SOP (CDU-1)
@@ -118,6 +119,15 @@ npm run dev
 ```
 
 Open [http://localhost:5173/](http://localhost:5173/) in your web browser.
+
+---
+
+## Mobile-First Field Technician UI
+
+IKIP is fully optimized for rugged tablets and mobile devices carried by field operations technicians:
+- **Enforced 44px Touch Targets:** Buttons (`.btn`), navigation links (`.nav-item`), filtering chips (`.chip`), inputs, and tabs are configured with a minimum of `44px` height and width on screens `≤768px` to guarantee tap safety on rugged devices.
+- **Fluid Layout Grids:** Stacks timeline incident tables, risk scorecard grids, and D3 knowledge graph panels vertically on compact viewports to avoid side scrolling.
+- **Off-Canvas Sidebar Overlays:** Implements compact mobile menus that slide into view, ensuring rapid page switching for engineers moving about the plant floor.
 
 ---
 
