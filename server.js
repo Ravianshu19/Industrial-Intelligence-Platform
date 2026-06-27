@@ -94,9 +94,38 @@ function getCorpusFiles() {
     .map(file => path.join(dirPath, file));
 }
 
+let _indexCache = null;
+let _indexedAt = 0;
+
+function getIndex(files) {
+  const mtime = Math.max(...files.map(f => fs.statSync(f).mtimeMs), 0);
+  if (!_indexCache || mtime > _indexedAt) {
+    _indexCache = buildIndex(files);
+    _indexedAt = mtime || Date.now();
+  }
+  return _indexCache;
+}
+
+// 0. Endpoint: Observability-aware stats return
+app.get('/api/stats', (req, res) => {
+  try {
+    const files = getCorpusFiles();
+    getIndex(files); // ensure index is initialized to set _indexedAt
+    res.json({
+      documentCount: files.length,
+      indexedAt: new Date(_indexedAt).toISOString(),
+      corpusSizeKB: Math.round((files.reduce((s, f) => s + fs.statSync(f).size, 0) / 1024) * 100) / 100
+    });
+  } catch (err) {
+    console.error('Error fetching corpus stats:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 1. Endpoint: Get dynamic unified D3 Knowledge Graph parsed from ALL corpus files
 app.get('/api/graph', (req, res) => {
   try {
+    res.set('Cache-Control', 'public, max-age=60');
     const files = getCorpusFiles();
     const allNodesMap = new Map();
     const allLinks = [];
@@ -232,10 +261,10 @@ app.post('/api/chat', async (req, res) => {
   try {
     const files = getCorpusFiles();
 
-    // 1. Build the TF-IDF vector index over the live corpus and rank documents
+    // 1. Build or retrieve the cached TF-IDF vector index over the live corpus and rank documents
     //    by cosine similarity (chunk-level, IDF-weighted, top-K). This replaces
     //    the old binary keyword-overlap scorer.
-    const index = buildIndex(files);
+    const index = getIndex(files);
     const matchedDocs = retrieve(message, index, { topK: 5, floor: 0.04 });
 
     console.log(`Vector retrieval for "${message}" -> ${matchedDocs.length} docs (top score ${matchedDocs[0]?.score.toFixed(3) || 'n/a'})`);

@@ -32,3 +32,14 @@ The platform separates document processing, semantic API endpoints, and user vis
   1. **Knowledge Graph Module ([src/pages/knowledge-graph.js](../src/pages/knowledge-graph.js)):** Connects to `/api/graph` and renders a live, interactive D3.js force-directed graph. Users can drag nodes, click nodes to view adjacent relationships, and watch the graph adjust dynamically when new files are uploaded.
   2. **Expert Copilot Chat Module ([src/pages/copilot.js](../src/pages/copilot.js)):** Connects to `/api/chat` to provide conversational Q&A, displaying live citations, confidence metrics, and interactive follow-up questions.
   3. **Analytics & Performance Modules:** Renders statutory compliance status lists, maintenance root-cause analysis (RCA) trees, and failure timeline charts using standard web components.
+
+---
+
+## 3. Production Architecture & Scaling Path
+
+- **Current State:** The TF-IDF index is built and cached in-process, and the document corpus is stored as a flat-file directory of Markdown files.
+- **Production Path:**
+  - **Vector DB Migration:** Replace local TF-IDF chunking with a hosted vector database (e.g., ChromaDB, Pinecone, or pgvector) to scale past 1,000+ files without re-scan bottlenecks.
+  - **Graph Caching:** Cache the parsed entity graph in Redis with TTL invalidation triggered on `/api/upload` operations.
+  - **Multi-Tenancy & Sharding:** Shard the corpus by plant/unit with per-tenant API keys.
+  - **Swappable Interface:** The retriever interface in [server/retriever.js](../server/retriever.js) is designed to be fully modular — replacing `buildIndex()` and `retrieve()` with a neural embedding client (e.g. `@xenova/transformers` all-MiniLM or OpenAI embeddings) requires zero changes to the rest of the application.

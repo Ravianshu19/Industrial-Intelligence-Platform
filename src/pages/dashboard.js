@@ -29,9 +29,9 @@ export function render(container) {
             </div>
             <div class="stat-change up">↑ 12%</div>
           </div>
-          <div class="stat-value">1,247</div>
+          <div class="stat-value" id="stat-doc-count">11</div>
           <div class="stat-label">Documents Processed</div>
-          <div class="stat-meta">Across 7 repositories</div>
+          <div class="stat-meta" id="stat-doc-meta">Total size: 45 KB</div>
         </div>
 
         <div class="stat-card glass-card hover-lift stagger-2">
@@ -103,8 +103,8 @@ export function render(container) {
               <h3>Document Ingestion</h3>
               <p>AI pipeline for parsing P&IDs, standards, inspection PDFs, and work orders.</p>
               <div class="module-card-stats">
-                <span><strong>1,247</strong> documents</span>
-                <span><strong>15</strong> types</span>
+                <span><strong id="ingest-card-docs">11</strong> documents</span>
+                <span><strong id="ingest-card-size">45 KB</strong> size</span>
               </div>
             </div>
 
@@ -278,4 +278,20 @@ export function render(container) {
       if (path) navigate(path);
     });
   });
+
+  // Fetch live corpus stats
+  fetch('/api/stats')
+    .then(res => res.json())
+    .then(stats => {
+      const docCountEl = container.querySelector('#stat-doc-count');
+      const docMetaEl = container.querySelector('#stat-doc-meta');
+      const ingestCardDocs = container.querySelector('#ingest-card-docs');
+      const ingestCardSize = container.querySelector('#ingest-card-size');
+
+      if (docCountEl) docCountEl.textContent = stats.documentCount;
+      if (docMetaEl) docMetaEl.textContent = `Total size: ${stats.corpusSizeKB} KB`;
+      if (ingestCardDocs) ingestCardDocs.textContent = `${stats.documentCount} docs`;
+      if (ingestCardSize) ingestCardSize.textContent = `${stats.corpusSizeKB} KB`;
+    })
+    .catch(err => console.error('Error fetching dashboard stats:', err));
 }
