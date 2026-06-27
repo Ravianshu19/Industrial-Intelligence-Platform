@@ -5,6 +5,7 @@
 import { copilotResponses, suggestedQueries } from '../data/copilot-responses.js';
 
 export function render(container) {
+  const initialQueries = parseInt(localStorage.getItem('ikip_query_count') || '342', 10);
   container.innerHTML = `
     <div class="page copilot-page">
       <!-- Page Header -->
@@ -12,7 +13,7 @@ export function render(container) {
         <h1>Expert Knowledge Copilot</h1>
         <p>AI Assistant powered by RAG (Retrieval-Augmented Generation) across refinery document systems</p>
       </div>
-
+ 
       <!-- Layout Grid -->
       <div class="copilot-layout">
         <!-- Left: Chat Area -->
@@ -30,7 +31,7 @@ export function render(container) {
               <div class="copilot-status">Online — Connected to 1,247 documents</div>
             </div>
           </div>
-
+ 
           <!-- Messages Area -->
           <div class="copilot-messages" id="chat-messages">
             <!-- Welcome Message -->
@@ -41,7 +42,7 @@ export function render(container) {
                 I have access to 1,247 documents across 3 plants (IOCL Gujarat Refinery, NTPC Vindhyachal, and BPCL Mumbai). What would you like to know?
               </div>
             </div>
-
+ 
             <!-- Initial Suggested Questions -->
             <div class="suggested-questions-container animate-fade-in-up stagger-1">
               <h4>Suggested Questions:</h4>
@@ -50,7 +51,7 @@ export function render(container) {
               </div>
             </div>
           </div>
-
+ 
           <!-- Input Area -->
           <div class="copilot-input-area">
             <div class="copilot-input-wrapper">
@@ -64,7 +65,7 @@ export function render(container) {
             </div>
           </div>
         </div>
-
+ 
         <!-- Right: Sidebar -->
         <div class="copilot-sidebar stagger-2">
           <!-- Statistics Card -->
@@ -72,7 +73,7 @@ export function render(container) {
             <h4>Query Statistics</h4>
             <div class="kg-stats-grid">
               <div class="kg-stat">
-                <div class="kg-stat-value">342</div>
+                <div class="kg-stat-value" id="stat-total-queries">${initialQueries}</div>
                 <div class="kg-stat-label">Total Queries</div>
               </div>
               <div class="kg-stat">
@@ -346,6 +347,13 @@ export function render(container) {
         throw new Error(data.error);
       }
       appendAssistantResponse(data);
+      
+      // Increment session counter
+      const currentCount = parseInt(localStorage.getItem('ikip_query_count') || '342', 10);
+      const newCount = currentCount + 1;
+      localStorage.setItem('ikip_query_count', newCount.toString());
+      const statEl = container.querySelector('#stat-total-queries');
+      if (statEl) statEl.textContent = newCount.toString();
     } catch (err) {
       console.error('Error fetching chat response:', err);
       removeTypingIndicator();
@@ -353,6 +361,13 @@ export function render(container) {
       // Fallback local match
       const response = findResponse(text);
       appendAssistantResponse(response);
+      
+      // Increment session counter on fallback too
+      const currentCount = parseInt(localStorage.getItem('ikip_query_count') || '342', 10);
+      const newCount = currentCount + 1;
+      localStorage.setItem('ikip_query_count', newCount.toString());
+      const statEl = container.querySelector('#stat-total-queries');
+      if (statEl) statEl.textContent = newCount.toString();
     } finally {
       // Re-enable inputs
       chatInput.disabled = false;

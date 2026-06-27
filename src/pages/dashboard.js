@@ -5,6 +5,7 @@
 import { navigate } from '../router.js';
 
 export function render(container) {
+  const queryCount = parseInt(localStorage.getItem('ikip_query_count') || '342', 10);
   container.innerHTML = `
     <div class="page dashboard-page">
       <!-- Page Header -->
@@ -134,7 +135,7 @@ export function render(container) {
               <h3>Expert Copilot</h3>
               <p>Natural language Q&A chat engine over refinery documents with RAG citations.</p>
               <div class="module-card-stats">
-                <span><strong>342</strong> queries</span>
+                <span><strong>${queryCount}</strong> queries</span>
                 <span><strong>94%</strong> accuracy</span>
               </div>
             </div>
