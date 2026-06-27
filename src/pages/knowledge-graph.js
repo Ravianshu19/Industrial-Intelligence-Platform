@@ -11,7 +11,7 @@ export function render(container) {
       <!-- Page Header -->
       <div class="page-header animate-fade-in-down">
         <h1>Knowledge Graph Viewer</h1>
-        <p>Interactive graph connecting refinery assets, documentation, standards, and personnel</p>
+        <p id="kg-status">Interactive graph connecting refinery assets, documentation, standards, and personnel</p>
       </div>
 
       <!-- Main Layout -->
@@ -128,6 +128,11 @@ export function render(container) {
     .catch(err => {
       console.warn('Backend graph offline. Rendering static fallback graph.', err);
       d3.select('#loading-text').remove();
+      
+      const statusEl = container.querySelector('#kg-status');
+      if (statusEl) {
+        statusEl.innerHTML = '⚠️ <span style="color: var(--warning-400); font-weight: 500;">Live graph offline — showing cached backup graph</span>';
+      }
       
       container.querySelector('#stats-nodes-count').textContent = graphNodes.length;
       container.querySelector('#stats-edges-count').textContent = graphEdges.length;

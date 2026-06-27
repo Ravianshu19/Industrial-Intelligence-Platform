@@ -279,7 +279,7 @@ export function render(container) {
       step.querySelector('.pipeline-status-badge').textContent = 'Pending';
     });
 
-    // Read the file as text and upload to server
+    // Read the file and upload to server
     let uploadSuccess = false;
     let uploadError = null;
     let uploadResult = null;
@@ -287,13 +287,20 @@ export function render(container) {
     
     reader.onload = async (event) => {
       try {
-        const content = event.target.result;
+        let payload;
+        if (file.type === 'text/plain' || file.name.endsWith('.md') || file.name.endsWith('.txt')) {
+          payload = { name: fileName, content: event.target.result };
+        } else {
+          const base64 = event.target.result.split(',')[1];
+          payload = { name: fileName, contentBase64: base64 };
+        }
+
         const res = await fetch('/api/upload', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ name: fileName, content })
+          body: JSON.stringify(payload)
         });
         
         if (!res.ok) {
@@ -313,7 +320,11 @@ export function render(container) {
       uploadError = 'File reading error';
     };
 
-    reader.readAsText(file);
+    if (file.type === 'text/plain' || file.name.endsWith('.md') || file.name.endsWith('.txt')) {
+      reader.readAsText(file);
+    } else {
+      reader.readAsDataURL(file);
+    }
 
     let currentStep = 0;
     const interval = setInterval(() => {

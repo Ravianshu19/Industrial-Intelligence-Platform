@@ -200,6 +200,11 @@ app.post('/api/upload', async (req, res) => {
       return res.status(400).json({ error: 'Filename (name) and content or contentBase64 are required.' });
     }
 
+    const ALLOWED_EXTS = new Set(['.md', '.txt', '.pdf', '.png', '.jpg', '.jpeg', '.webp']);
+    if (!ALLOWED_EXTS.has(path.extname(name).toLowerCase())) {
+      return res.status(415).json({ error: 'Unsupported file type. Only Markdown, text, PDF, and image files are allowed.' });
+    }
+
     // Run heterogeneous inputs through the ingestion pipeline to obtain Markdown.
     let markdown;
     let method = 'text';
